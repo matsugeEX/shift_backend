@@ -21,4 +21,7 @@ from django.urls import path,include
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/hello/",include("api.hello.urls")), #api/hello/のリクエストが来たらapi/hello/urls.pyの定義を見てください、という意味 p141
+    path("api/hello_db/",include("api.hello_db.urls")),
+    path("api/people/",include("api.people.urls")),
 ]
+ #python manage.py runserver --settings config.settings.development

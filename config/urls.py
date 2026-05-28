@@ -25,3 +25,7 @@ urlpatterns = [
     path("api/people/",include("api.people.urls")),
 ]
  #python manage.py runserver --settings config.settings.development
+"""{
+  "username":"t-yamada",
+  "password":"password"
+ }"""

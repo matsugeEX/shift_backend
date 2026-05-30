@@ -14,7 +14,7 @@ from api.people.authentication import RefreshJWTAuthentication
 
 class PeopleView(APIView):
     #認証クラスの指定
-    authentication_classes = [JWTAuthentication]
+    
     #アクセス許可の指定
     #認証済みのリクエストの許可
     permission_classes = [IsAuthenticated]
@@ -66,16 +66,20 @@ class RetryView(APIView):
     permission_classes = []
 
     def post(self, request):
-        request.data['refresh'] = request.META.get('HTTP_REFRESH_TOKEN')
-        serializer = TokenRefreshSerializer(data=request.data)
+        data = request.data.copy()
+        #request.data['refresh'] = request.META.get('HTTP_REFRESH_TOKEN')
+        data['refresh'] = request.META.get('HTTP_REFRESH_TOKEN')
+        serializer = TokenRefreshSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         access = serializer.validated_data.get("access", None)
         refresh = serializer.validated_data.get("refresh", None)
+        print(access)
         if access:
             response = Response(status=status.HTTP_200_OK)
             max_age = settings.COOKIE_TIME
             response.set_cookie('access', access, httponly=True, max_age=max_age)
             response.set_cookie('refresh', refresh, httponly=True, max_age=max_age)
+            print("OK")
             return response
         return Response({'errMsg': 'ユーザーの認証に失敗しました'}, status=status.HTTP_401_UNAUTHORIZED)
 

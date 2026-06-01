@@ -157,7 +157,7 @@ COOKIE_TIME = 60*60*12
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': datetime.timedelta(minutes=1),
-    'REFRESH_TOKEN_LIFETIME': datetime.timedelta(days=30),
+    'REFRESH_TOKEN_LIFETIME': datetime.timedelta(minutes=30),
     'ROTATE_REFRESH_TOKENS': True, #同じトークンを使いますことができる
     'UPDATE_LAST_LOGIN': True,
 }

@@ -10,6 +10,10 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 from api.people.authentication import RefreshJWTAuthentication
 
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework.exceptions import ValidationError
+
+
 # Create your views here.
 
 class PeopleView(APIView):
@@ -66,22 +70,29 @@ class RetryView(APIView):
     permission_classes = []
 
     def post(self, request):
-        data = request.data.copy()
-        #request.data['refresh'] = request.META.get('HTTP_REFRESH_TOKEN')
-        data['refresh'] = request.META.get('HTTP_REFRESH_TOKEN')
-        serializer = TokenRefreshSerializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        access = serializer.validated_data.get("access", None)
-        refresh = serializer.validated_data.get("refresh", None)
-        print(access)
-        if access:
-            response = Response(status=status.HTTP_200_OK)
-            max_age = settings.COOKIE_TIME
-            response.set_cookie('access', access, httponly=True, max_age=max_age)
-            response.set_cookie('refresh', refresh, httponly=True, max_age=max_age)
-            print("OK")
-            return response
-        return Response({'errMsg': 'ユーザーの認証に失敗しました'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            data = request.data.copy()
+            #request.data['refresh'] = request.META.get('HTTP_REFRESH_TOKEN')
+            data['refresh'] = request.META.get('HTTP_REFRESH_TOKEN')
+            print("1")
+            serializer = TokenRefreshSerializer(data=data)
+            print("2")
+            serializer.is_valid(raise_exception=True)
+            print("3")
+            access = serializer.validated_data.get("access", None)
+            refresh = serializer.validated_data.get("refresh", None)
+            print("4")
+            if access:
+                response = Response(status=status.HTTP_200_OK)
+                max_age = settings.COOKIE_TIME
+                response.set_cookie('access', access, httponly=True, max_age=max_age)
+                response.set_cookie('refresh', refresh, httponly=True, max_age=max_age)
+                print("OK2")
+                return response
+            return Response({'errMsg': 'ユーザーの認証に失敗しました'}, status=status.HTTP_401_UNAUTHORIZED)
+        except (TokenError, ValidationError):
+            print("Not")
+            return Response({'errMsg': 'Token Error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class LogoutView(APIView):
     authentication_classes = []

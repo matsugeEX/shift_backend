@@ -1,5 +1,23 @@
+from ortools.sat.python import cp_model
+
+# =========================
+# モデル
+# =========================
+
+model = cp_model.CpModel()
+
+
+# =========================
+# 共通関数
+# =========================
+
 def time_to_minutes(time_str):
-    h, m = map(int, time_str.split(":"))
+
+    h, m = map(
+        int,
+        time_str.split(":")
+    )
+
     return h * 60 + m
 
 
@@ -31,7 +49,9 @@ def generate_slots():
     end = 21 * 60
 
     while current < end:
+
         slots.append(current)
+
         current += 15
 
     return slots
@@ -39,15 +59,12 @@ def generate_slots():
 
 def required_register_count(slot):
 
-    # 11:00-11:30
     if 11 * 60 <= slot < 11 * 60 + 30:
         return 2
 
-    # 11:30-17:00
     if 11 * 60 + 30 <= slot < 17 * 60:
         return 3
 
-    # 17:00-19:30
     if 17 * 60 <= slot < 19 * 60 + 30:
         return 2
 
@@ -62,635 +79,685 @@ def required_leader_count(slot):
     return 0
 
 
-def is_working(worker, slot):
-
-    start = time_to_minutes(worker["start"])
-    end = time_to_minutes(worker["end"])
-
-    return start <= slot < end
-
-
-def is_on_break(name, slot, worker_breaks):
-
-    return slot in worker_breaks[name]
-
-
-def select_leader(
-    workers,
-    slot,
-    leader_total_minutes,
-    worker_breaks,
-):
-
-    candidates = []
-
-    for worker in workers:
-
-        if not worker["leader"]:
-            continue
-
-        if not is_working(worker, slot):
-            continue
-
-        if is_on_break(
-            worker["name"],
-            slot,
-            worker_breaks,
-        ):
-            continue
-
-        candidates.append(worker["name"])
-
-    if not candidates:
-        return None
-
-    candidates.sort(
-        key=lambda name: leader_total_minutes[name]
-    )
-
-    return candidates[0]
-
-def can_take_break(
-    worker,
-    break_start,
-    break_minutes,
-    workers,
-    worker_breaks,
-    break_usage,
-):
-
-    current = break_start
-
-    while current < break_start + break_minutes:
-
-        #
-        # 第一段階
-        # 同時休憩人数制限
-        #
-        if break_usage.get(current, 0) >= 4:
-            return False
-
-        #
-        # 第二段階
-        # 必要人数確保
-        #
-        working_count = 0
-
-        for w in workers:
-
-            if not is_working(w, current):
-                continue
-
-            if current in worker_breaks.get(
-                w["name"],
-                []
-            ):
-                continue
-
-            working_count += 1
-
-        required_count = (
-            required_register_count(current)
-            + required_leader_count(current)
-        )
-
-        #
-        # 今からこの人を休憩に入れる
-        #
-        if working_count - 1 < required_count:
-            return False
-
-        #
-        # 第三段階
-        # 責任者候補確保
-        #
-        leader_available = False
-
-        for w in workers:
-
-            if not w["leader"]:
-                continue
-
-            if w["name"] == worker["name"]:
-                continue
-
-            if not is_working(w, current):
-                continue
-
-            if current in worker_breaks.get(
-                w["name"],
-                []
-            ):
-                continue
-
-            leader_available = True
-            break
-
-        if not leader_available:
-            return False
-
-        current += 15
-
-    return True
-
-def reserve_break(
-    break_start,
-    break_minutes,
-    break_usage,
-):
-
-    current = break_start
-
-    while current < break_start + break_minutes:
-
-        break_usage[current] = (
-            break_usage.get(current, 0)
-            + 1
-        )
-
-        current += 15
-
-def allocate(workers):
-
-    slots = generate_slots()
-
-    #
-    # 休憩
-    #
-    worker_breaks = {}
-
-    break_usage = {}
-
-    for worker in workers:
-
-        start = time_to_minutes(worker["start"])
-        end = time_to_minutes(worker["end"])
-
-        work_minutes = end - start
-
-        break_minutes = get_break_minutes(
-            work_minutes
-        )
-
-        if break_minutes == 0:
-
-            worker_breaks[
-                worker["name"]
-            ] = []
-
-            continue
-
-        preferred_start = (
-            start + int(work_minutes * 0.6)
-        )
-
-        preferred_start = (
-            preferred_start // 15
-        ) * 15
-
-        #
-        # 休憩開始可能範囲
-        #
-        earliest_break = start + 180
-
-        latest_return = 18 * 60 + 30
-
-        latest_break = min(
-            end - break_minutes,
-            latest_return - break_minutes,
-        )
-
-        #
-        # 希望位置が範囲外なら補正
-        #
-        preferred_start = min(
-            preferred_start,
-            latest_break,
-        )
-
-        preferred_start = max(
-            preferred_start,
-            earliest_break,
-        )
-
-        break_start = None
-
-        candidate = preferred_start
-
-        while candidate >= earliest_break:
-
-            if can_take_break(
-                worker,
-                candidate,
-                break_minutes,
-                workers,
-                worker_breaks,
-                break_usage,
-            ):
-
-                break_start = candidate
-                break
-
-            candidate -= 15
-
-        #
-        # 見つからない場合
-        #
-        if break_start is None:
-
-            worker_breaks[
-                worker["name"]
-            ] = []
-
-            continue
-
-        break_slots = []
-
-        current = break_start
-
-        while current < break_start + break_minutes:
-
-            break_slots.append(current)
-
-            current += 15
-
-        worker_breaks[
-            worker["name"]
-        ] = break_slots
-
-        reserve_break(
-            break_start,
-            break_minutes,
-            break_usage,
-        )
-
-    #
-    # レジ管理
-    #
-    register_minutes = {
-        worker["name"]: 0
-        for worker in workers
-    }
-
-    total_register_minutes = {
-        worker["name"]: 0
-        for worker in workers
-    }
-
-    #
-    # 責任者管理
-    #
-    leader_total_minutes = {
-        worker["name"]: 0
-        for worker in workers
-        if worker["leader"]
-    }
-
-    current_leader = None
-    next_leader_change = 11 * 60
-
-    result = {}
-
-    for slot in slots:
-
-        result[slot] = {
-            "leader": [],
-            "register": [],
-            "break": [],
-        }
-
-        #
-        # 休憩者
-        #
-        for worker in workers:
-
-            if is_on_break(
-                worker["name"],
-                slot,
-                worker_breaks,
-            ):
-                result[slot]["break"].append(
-                    worker["name"]
-                )
-
-        #
-        # 責任者
-        #
-        if required_leader_count(slot):
-
-            if slot >= next_leader_change:
-
-                current_leader = select_leader(
-                    workers,
-                    slot,
-                    leader_total_minutes,
-                    worker_breaks,
-                )
-
-                next_leader_change = (
-                    slot + 180
-                )
-
-            if current_leader:
-
-                result[slot]["leader"] = [
-                    current_leader
-                ]
-
-                leader_total_minutes[
-                    current_leader
-                ] += 15
-
-        #
-        # レジ
-        #
-        register_needed = (
-            required_register_count(
-                slot
-            )
-        )
-
-        register_candidates = []
-
-        for worker in workers:
-
-            name = worker["name"]
-
-            if not is_working(
-                worker,
-                slot,
-            ):
-                continue
-
-            if is_on_break(
-                name,
-                slot,
-                worker_breaks,
-            ):
-                continue
-
-            if (
-                name
-                in result[slot]["leader"]
-            ):
-                continue
-
-            if (
-                register_minutes[name]
-                < 90
-            ):
-                register_candidates.append(
-                    name
-                )
-
-        #
-        # 人数不足時は90分制限解除
-        #
-        if (
-            len(register_candidates)
-            < register_needed
-        ):
-
-            for worker in workers:
-
-                name = worker["name"]
-
-                if not is_working(
-                    worker,
-                    slot,
-                ):
-                    continue
-
-                if is_on_break(
-                    name,
-                    slot,
-                    worker_breaks,
-                ):
-                    continue
-
-                if (
-                    name
-                    in result[slot]["leader"]
-                ):
-                    continue
-
-                if (
-                    name
-                    not in register_candidates
-                ):
-                    register_candidates.append(
-                        name
-                    )
-
-        #
-        # 公平性
-        #
-        register_candidates.sort(
-            key=lambda name: (
-                register_minutes[name],
-                total_register_minutes[name],
-            )
-        )
-
-        selected_register = (
-            register_candidates[
-                :register_needed
-            ]
-        )
-
-        result[slot]["register"] = (
-            selected_register
-        )
-
-        #
-        # レジ時間更新
-        #
-        for worker in workers:
-
-            name = worker["name"]
-
-            if (
-                name
-                in selected_register
-            ):
-
-                register_minutes[
-                    name
-                ] += 15
-
-                total_register_minutes[
-                    name
-                ] += 15
-
-            else:
-
-                register_minutes[
-                    name
-                ] = 0
-
-    return (
-        result,
-        total_register_minutes,
-        leader_total_minutes,
-        worker_breaks,
-    )
-
-def reserve_break(
-    break_start,
-    break_minutes,
-    break_usage,
-):
-
-    current = break_start
-
-    while current < break_start + break_minutes:
-
-        break_usage[current] = (
-            break_usage.get(current, 0)
-            + 1
-        )
-
-        current += 15
-
-
-def print_schedule(result):
-
-    for slot, info in result.items():
-
-        hour = slot // 60
-        minute = slot % 60
-
-        print(
-            f"{hour:02}:{minute:02}",
-            f"Leader={info['leader']}",
-            f"Register={info['register']}",
-            f"Break={info['break']}",
-        )
-
-
-def build_worker_schedule(
-    workers,
-    result,
-):
-
-    worker_schedule = {
-        worker["name"]: []
-        for worker in workers
-    }
-
-    for slot in sorted(result.keys()):
-
-        info = result[slot]
-
-        for worker in workers:
-
-            name = worker["name"]
-
-            symbol = "."
-
-            if name in info["break"]:
-                symbol = "#"
-
-            elif name in info["leader"]:
-                symbol = "L"
-
-            elif name in info["register"]:
-
-                index = (
-                    info["register"].index(name)
-                    + 1
-                )
-
-                symbol = str(index)
-
-            worker_schedule[name].append(
-                symbol
-            )
-
-    return worker_schedule
-
-
-def print_worker_schedule(worker_schedule, result):
-
-    slots = sorted(result.keys())
-
-    print()
-
-    print("       ", end="")
-    for slot in slots:
-        if slot % 60 == 0:
-            print(f"{slot//60:02}", end="")
-        else:
-            print("  ", end="")
-    print()
-
-    print("       ", end="")
-    for slot in slots:
-        if slot % 60 == 0:
-            print("00", end="")
-        else:
-            print("  ", end="")
-    print()
-
-    for name, schedule in worker_schedule.items():
-
-        line = ""
-
-        for symbol in schedule:
-            line += symbol + " "
-
-        print(f"{name:6} {line}")
+# =========================
+# 従業員
+# =========================
 
 workers = [
     {"name": "田中", "start": "10:00", "end": "21:00", "leader": True},
     {"name": "佐藤", "start": "10:00", "end": "21:00", "leader": True},
     {"name": "鈴木", "start": "10:00", "end": "19:00", "leader": False},
     {"name": "高橋", "start": "10:00", "end": "18:00", "leader": False},
-
     {"name": "伊藤", "start": "11:00", "end": "20:00", "leader": False},
     {"name": "渡辺", "start": "11:00", "end": "21:00", "leader": False},
-
     {"name": "山本", "start": "12:00", "end": "21:00", "leader": False},
     {"name": "中村", "start": "12:00", "end": "18:00", "leader": False},
-
     {"name": "小林", "start": "13:00", "end": "21:00", "leader": False},
     {"name": "加藤", "start": "13:00", "end": "20:00", "leader": False},
-
     {"name": "吉田", "start": "14:00", "end": "21:00", "leader": False},
     {"name": "松本", "start": "15:00", "end": "21:00", "leader": False},
 ]
 
-result, register_stats, leader_stats, worker_breaks = allocate(workers)
 
-worker_schedule = build_worker_schedule(
-    workers,
-    result,
-)
-for slot, info in result.items():
+# =========================
+# スロット
+# =========================
 
-    if info["break"]:
+slots = generate_slots()
 
-        h = slot // 60
-        m = slot % 60
 
-        print(
-            f"{h:02}:{m:02}",
-            info["break"]
+# =========================
+# タスク
+# =========================
+
+tasks = [
+    "leader",
+    "reg1",
+    "reg2",
+    "reg3",
+    "break",
+    "other",
+]
+
+
+# =========================
+# 変数
+# =========================
+
+x = {}
+break_start = {}
+
+
+# =========================
+# break開始位置
+# =========================
+
+for worker in workers:
+
+    name = worker["name"]
+
+    for slot in slots:
+
+        break_start[name, slot] = (
+            model.NewBoolVar(
+                f"break_start_{name}_{slot}"
+            )
         )
 
-def print_worker_schedule_compact(
-    worker_schedule
-):
 
-    print()
+# =========================
+# 勤務内容
+# =========================
 
-    for name, schedule in (
-        worker_schedule.items()
-    ):
+for worker in workers:
+
+    name = worker["name"]
+
+    for slot in slots:
+
+        for task in tasks:
+
+            x[name, slot, task] = (
+                model.NewBoolVar(
+                    f"{name}_{slot}_{task}"
+                )
+            )
+
+
+# =========================
+# 勤務時間制約
+# =========================
+
+for worker in workers:
+
+    name = worker["name"]
+
+    start = time_to_minutes(
+        worker["start"]
+    )
+
+    end = time_to_minutes(
+        worker["end"]
+    )
+
+    for slot in slots:
+
+        if start <= slot < end:
+
+            model.Add(
+
+                sum(
+                    x[name, slot, task]
+                    for task in tasks
+                )
+
+                == 1
+            )
+
+        else:
+
+            for task in tasks:
+
+                model.Add(
+                    x[name, slot, task]
+                    == 0
+                )
+
+
+# =========================
+# リーダー資格制約
+# =========================
+
+for worker in workers:
+
+    if not worker["leader"]:
+
+        name = worker["name"]
+
+        for slot in slots:
+
+            model.Add(
+                x[name, slot, "leader"]
+                == 0
+            )
+
+
+# =========================
+# リーダー人数
+# =========================
+
+for slot in slots:
+
+    if required_leader_count(slot):
+
+        model.Add(
+
+            sum(
+
+                x[
+                    worker["name"],
+                    slot,
+                    "leader"
+                ]
+
+                for worker in workers
+                if worker["leader"]
+
+            )
+
+            == 1
+        )
+
+
+# =========================
+# レジ人数
+# =========================
+
+register_tasks = [
+    "reg1",
+    "reg2",
+    "reg3",
+]
+
+for slot in slots:
+
+    required = (
+        required_register_count(slot)
+    )
+
+    model.Add(
+
+        sum(
+
+            x[
+                worker["name"],
+                slot,
+                task
+            ]
+
+            for worker in workers
+            for task in register_tasks
+
+        )
+
+        == required
+    )
+
+is_register = {}
+
+for worker in workers:
+
+    name = worker["name"]
+
+    for slot in slots:
+
+        is_register[name, slot] = (
+            model.NewBoolVar(
+                f"is_register_{name}_{slot}"
+            )
+        )
+
+        model.Add(
+
+            is_register[name, slot]
+
+            ==
+
+            x[name, slot, "reg1"]
+            + x[name, slot, "reg2"]
+            + x[name, slot, "reg3"]
+
+        )
+
+
+# =========================
+# 休憩制約
+# =========================
+
+for worker in workers:
+
+    name = worker["name"]
+
+    start_time = time_to_minutes(
+        worker["start"]
+    )
+
+    end_time = time_to_minutes(
+        worker["end"]
+    )
+
+    work_minutes = (
+        end_time
+        - start_time
+    )
+
+    break_slots_needed = (
+        get_break_minutes(
+            work_minutes
+        )
+        // 15
+    )
+
+    if break_slots_needed == 0:
+
+        for slot in slots:
+
+            model.Add(
+                x[name, slot, "break"]
+                == 0
+            )
+
+            model.Add(
+                break_start[name, slot]
+                == 0
+            )
+
+        continue
+
+    valid_starts = []
+
+    for slot in slots:
+
+        end_of_break = (
+            slot
+            + break_slots_needed * 15
+        )
+
+        if slot < start_time + 120:
+            continue
+
+        if slot > end_time - 120:
+            continue
+
+        if end_of_break > 18 * 60 + 30:
+            continue
+
+        valid_starts.append(slot)
+
+    model.Add(
+
+        sum(
+            break_start[name, slot]
+            for slot in valid_starts
+        )
+
+        == 1
+    )
+
+    for slot in slots:
+
+        covering_starts = []
+
+        for start_slot in valid_starts:
+
+            if (
+                start_slot
+                <= slot
+                <
+                start_slot
+                + break_slots_needed * 15
+            ):
+
+                covering_starts.append(
+                    break_start[
+                        name,
+                        start_slot
+                    ]
+                )
+
+        if covering_starts:
+
+            model.Add(
+
+                x[
+                    name,
+                    slot,
+                    "break"
+                ]
+
+                == sum(
+                    covering_starts
+                )
+            )
+
+        else:
+
+            model.Add(
+                x[
+                    name,
+                    slot,
+                    "break"
+                ]
+                == 0
+            )
+
+
+# =========================
+# 18:30以降休憩禁止
+# =========================
+
+for worker in workers:
+
+    name = worker["name"]
+
+    for slot in slots:
+
+        if slot >= 18 * 60 + 30:
+
+            model.Add(
+                x[
+                    name,
+                    slot,
+                    "break"
+                ]
+                == 0
+            )
+
+# =========================
+# レジ連続90分制限
+# =========================
+
+for worker in workers:
+
+    name = worker["name"]
+
+    for i in range(len(slots) - 6):
+
+        seven_slots = slots[i:i+7]
+
+        model.Add(
+
+            sum(
+
+                x[name, slot, task]
+
+                for slot in seven_slots
+                for task in register_tasks
+
+            )
+
+            <= 6
+
+        )
+
+is_leader = {}
+
+for worker in workers:
+
+    name = worker["name"]
+
+    for slot in slots:
+
+        is_leader[name, slot] = (
+            model.NewBoolVar(
+                f"is_leader_{name}_{slot}"
+            )
+        )
+
+        model.Add(
+            is_leader[name, slot]
+            ==
+            x[name, slot, "leader"]
+        )
+
+leader_start = {}
+
+for worker in workers:
+
+    if not worker["leader"]:
+        continue
+
+    name = worker["name"]
+
+    for slot in slots:
+
+        leader_start[name, slot] = (
+            model.NewBoolVar(
+                f"leader_start_{name}_{slot}"
+            )
+        )
+
+for worker in workers:
+
+    if not worker["leader"]:
+        continue
+
+    name = worker["name"]
+
+    first_slot = slots[0]
+
+    model.Add(
+        leader_start[name, first_slot]
+        ==
+        is_leader[name, first_slot]
+    )
+
+    for i in range(1, len(slots)):
+
+        current = slots[i]
+        prev = slots[i - 1]
+
+        model.Add(
+            leader_start[name, current]
+            >=
+            is_leader[name, current]
+            - is_leader[name, prev]
+        )
+
+        model.Add(
+            leader_start[name, current]
+            <=
+            is_leader[name, current]
+        )
+
+        model.Add(
+            leader_start[name, current]
+            <=
+            1 - is_leader[name, prev]
+        )
+
+for worker in workers:
+
+    if not worker["leader"]:
+        continue
+
+    name = worker["name"]
+
+    for i in range(len(slots) - 3):
+
+        start_slot = slots[i]
+
+        model.Add(
+
+            sum(
+                is_leader[name, slots[j]]
+                for j in range(i, i + 4)
+            )
+
+            >=
+
+            4 * leader_start[name, start_slot]
+
+        )
+
+for worker in workers:
+
+    if not worker["leader"]:
+        continue
+
+    name = worker["name"]
+
+    for i in range(len(slots)-3, len(slots)):
+
+        model.Add(
+            leader_start[name, slots[i]]
+            == 0
+        )
+
+# =========================
+# リーダー連続3時間制限
+# =========================
+
+for worker in workers:
+
+    if not worker["leader"]:
+        continue
+
+    name = worker["name"]
+
+    for i in range(len(slots) - 12):
+
+        thirteen_slots = slots[i:i+13]
+
+        model.Add(
+
+            sum(
+
+                is_leader[
+                    name,
+                    slot
+                ]
+
+                for slot in thirteen_slots
+
+            )
+
+            <= 12
+
+        )
+
+leader_minutes = {}
+
+for worker in workers:
+
+    if worker["leader"]:
+
+        name = worker["name"]
+
+        leader_minutes[name] = model.NewIntVar(
+            0,
+            len(slots) * 15,
+            f"leader_minutes_{name}"
+        )
+
+        model.Add(
+
+            leader_minutes[name]
+
+            ==
+
+            sum(
+                x[name, slot, "leader"]
+                for slot in slots
+            ) * 15
+        )
+
+leader_max = model.NewIntVar(
+    0,
+    len(slots) * 15,
+    "leader_max"
+)
+
+leader_min = model.NewIntVar(
+    0,
+    len(slots) * 15,
+    "leader_min"
+)
+
+model.AddMaxEquality(
+    leader_max,
+    list(leader_minutes.values())
+)
+
+model.AddMinEquality(
+    leader_min,
+    list(leader_minutes.values())
+)
+
+leader_gap = model.NewIntVar(
+    0,
+    len(slots) * 15,
+    "leader_gap"
+)
+
+model.Add(
+    leader_gap
+    ==
+    leader_max - leader_min
+)
+
+# =========================
+# 仮目的関数
+# =========================
+
+model.Minimize(
+    leader_gap
+)
+
+
+# =========================
+# 求解
+# =========================
+
+solver = cp_model.CpSolver()
+
+status = solver.Solve(model)
+
+print(
+    "status =",
+    solver.StatusName(status)
+)
+
+print("status =", solver.StatusName(status))
+def print_worker_schedule():
+
+    for worker in workers:
+
+        name = worker["name"]
+
+        schedule = []
+
+        for slot in slots:
+
+            symbol = "?"
+
+            if solver.Value(
+                x[name, slot, "leader"]
+            ):
+                symbol = "L"
+
+            elif solver.Value(
+                x[name, slot, "reg1"]
+            ):
+                symbol = "1"
+
+            elif solver.Value(
+                x[name, slot, "reg2"]
+            ):
+                symbol = "2"
+
+            elif solver.Value(
+                x[name, slot, "reg3"]
+            ):
+                symbol = "3"
+
+            elif solver.Value(
+                x[name, slot, "break"]
+            ):
+                symbol = "#"
+
+            elif solver.Value(
+                x[name, slot, "other"]
+            ):
+                symbol = "."
+
+            schedule.append(symbol)
 
         print(
             f"{name} [{','.join(schedule)}]"
         )
-print_worker_schedule_compact(worker_schedule)
-for name, breaks in worker_breaks.items():
-    print(name, len(breaks))
+
+
+if status == cp_model.OPTIMAL:
+
+    print_worker_schedule()

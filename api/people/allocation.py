@@ -13,10 +13,7 @@ model = cp_model.CpModel()
 
 def time_to_minutes(time_str):
 
-    h, m = map(
-        int,
-        time_str.split(":")
-    )
+    h, m = map(int,time_str.split(":"))
 
     return h * 60 + m
 
@@ -112,9 +109,7 @@ slots = generate_slots()
 
 tasks = [
     "leader",
-    "reg1",
-    "reg2",
-    "reg3",
+    "register",
     "break",
     "other",
 ]
@@ -253,33 +248,19 @@ for slot in slots:
 # レジ人数
 # =========================
 
-register_tasks = [
-    "reg1",
-    "reg2",
-    "reg3",
-]
-
 for slot in slots:
 
-    required = (
-        required_register_count(slot)
-    )
+    required = required_register_count(slot)
 
     model.Add(
-
         sum(
-
             x[
                 worker["name"],
                 slot,
-                task
+                "register"
             ]
-
             for worker in workers
-            for task in register_tasks
-
         )
-
         == required
     )
 
@@ -298,18 +279,137 @@ for worker in workers:
         )
 
         model.Add(
-
             is_register[name, slot]
-
             ==
-
-            x[name, slot, "reg1"]
-            + x[name, slot, "reg2"]
-            + x[name, slot, "reg3"]
-
+            x[name, slot, "register"]
         )
 
+register_start = {}
 
+for worker in workers:
+
+    name = worker["name"]
+
+    for slot in slots:
+
+        register_start[name, slot] = model.NewBoolVar(
+            f"register_start_{name}_{slot}"
+        )
+
+for worker in workers:
+
+    name = worker["name"]
+
+    first_slot = slots[0]
+
+    model.Add(
+        register_start[name, first_slot]
+        ==
+        is_register[name, first_slot]
+    )
+
+    for i in range(1, len(slots)):
+
+        current = slots[i]
+        prev = slots[i - 1]
+
+        model.Add(
+            register_start[name, current]
+            >=
+            is_register[name, current] - is_register[name, prev]
+        )
+
+        model.Add(
+            register_start[name, current]
+            <=
+            is_register[name, current]
+        )
+
+        model.Add(
+            register_start[name, current]
+            <=
+            1 - is_register[name, prev]
+        )
+
+for worker in workers:
+
+    name = worker["name"]
+
+    for i in range(len(slots) - 3):
+
+        start_slot = slots[i]
+
+        model.Add(
+            sum(
+                is_register[name, slots[j]]
+                for j in range(i, i + 4)
+            )
+            >=
+            4 * register_start[name, start_slot]
+        )
+
+register_end = {}
+
+for worker in workers:
+
+    name = worker["name"]
+
+    for slot in slots:
+
+        register_end[name, slot] = model.NewBoolVar(
+            f"register_end_{name}_{slot}"
+        )
+
+for worker in workers:
+
+    name = worker["name"]
+
+    last_slot = slots[-1]
+
+    model.Add(
+        register_end[name, last_slot]
+        ==
+        is_register[name, last_slot]
+    )
+
+    for i in range(len(slots) - 1):
+
+        current = slots[i]
+        next_slot = slots[i + 1]
+
+        model.Add(
+            register_end[name, current]
+            >=
+            is_register[name, current] - is_register[name, next_slot]
+        )
+
+        model.Add(
+            register_end[name, current]
+            <=
+            is_register[name, current]
+        )
+
+        model.Add(
+            register_end[name, current]
+            <=
+            1 - is_register[name, next_slot]
+        )
+
+for worker in workers:
+
+    name = worker["name"]
+
+    for i in range(len(slots) - 4):
+
+        end_slot = slots[i]
+
+        for j in range(i + 1, i + 5):
+
+            model.Add(
+                is_register[name, slots[j]]
+                <=
+                1 - register_end[name, end_slot]
+            )
 # =========================
 # 休憩制約
 # =========================
@@ -466,18 +566,11 @@ for worker in workers:
         seven_slots = slots[i:i+7]
 
         model.Add(
-
             sum(
-
-                x[name, slot, task]
-
+                x[name, slot, "register"]
                 for slot in seven_slots
-                for task in register_tasks
-
             )
-
             <= 6
-
         )
 
 is_leader = {}
@@ -708,7 +801,6 @@ print(
     solver.StatusName(status)
 )
 
-print("status =", solver.StatusName(status))
 def print_worker_schedule():
 
     for worker in workers:
@@ -719,7 +811,7 @@ def print_worker_schedule():
 
         for slot in slots:
 
-            symbol = "?"
+            symbol = "-"
 
             if solver.Value(
                 x[name, slot, "leader"]
@@ -727,19 +819,9 @@ def print_worker_schedule():
                 symbol = "L"
 
             elif solver.Value(
-                x[name, slot, "reg1"]
+                x[name, slot, "register"]
             ):
-                symbol = "1"
-
-            elif solver.Value(
-                x[name, slot, "reg2"]
-            ):
-                symbol = "2"
-
-            elif solver.Value(
-                x[name, slot, "reg3"]
-            ):
-                symbol = "3"
+                symbol = "R"
 
             elif solver.Value(
                 x[name, slot, "break"]
@@ -749,14 +831,13 @@ def print_worker_schedule():
             elif solver.Value(
                 x[name, slot, "other"]
             ):
-                symbol = "."
+                symbol = "o"
 
             schedule.append(symbol)
 
         print(
             f"{name} [{','.join(schedule)}]"
         )
-
 
 if status == cp_model.OPTIMAL:
 

@@ -12,6 +12,7 @@ urlpatterns = [
     path("retry/",views.RetryView.as_view()),
     path("logout/",views.LogoutView.as_view()),
     path("person/",views.PeopleView.as_view()),
+    path("allocation/",views.AllocationView.as_view()),
 ]
 
 #username yamada

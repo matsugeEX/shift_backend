@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 from api.people.authentication import RefreshJWTAuthentication
+from .allocation import allocate_shift
 
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework.exceptions import ValidationError
@@ -40,6 +41,20 @@ class PeopleView(APIView):
         #検証したデータを永続化する
         serializer.save()
         return Response(serializer.data,status.HTTP_201_CREATED)
+
+class AllocationView(APIView):
+
+    #認証済みのみ許可
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, format=None):
+
+        workers = request.data.get("workers", [])
+
+        result = allocate_shift(workers)
+
+        return Response(result)
+
 
 class LoginView(APIView):
     """ユーザーのログイン処理

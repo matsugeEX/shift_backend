@@ -1,16 +1,15 @@
-# config/settings/production.py
-
+# production.py
 from .base import *
 
 DEBUG = False
 
 ALLOWED_HOSTS = os.getenv(
     "ALLOWED_HOSTS",
-    ""
+    "localhost,127.0.0.1"
 ).split(",")
 
 CORS_ALLOWED_ORIGINS = [
-    os.getenv("FRONTEND_URL")
+    os.getenv("FRONTEND_URL", "http://localhost:3000")
 ]
 
 DATABASES = {

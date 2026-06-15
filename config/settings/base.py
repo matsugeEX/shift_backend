@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
-from datetime import datetime,timedelta
+from datetime import timedelta
 from pathlib import Path
 import os
 from dotenv import load_dotenv
@@ -156,8 +156,8 @@ REST_FRAMEWORK = {
 COOKIE_TIME = 60*60*12
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': datetime.timedelta(minutes=1),
-    'REFRESH_TOKEN_LIFETIME': datetime.timedelta(minutes=30),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=30),
     'ROTATE_REFRESH_TOKENS': True, #同じトークンを使いますことができる
     'UPDATE_LAST_LOGIN': True,
 }

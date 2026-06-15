@@ -13,9 +13,39 @@ from .allocation import allocate_shift
 
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework.exceptions import ValidationError
-
+from django.contrib.auth.models import User
 
 # Create your views here.
+
+class CreateTestUserView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        if not username or not password:
+            return Response(
+                {"error": "username and password are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {"error": "user already exists"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        User.objects.create_user(
+            username=username,
+            password=password
+        )
+
+        return Response(
+            {"message": "user created"},
+            status=status.HTTP_201_CREATED
+        )
 
 class PeopleView(APIView):
     #認証クラスの指定

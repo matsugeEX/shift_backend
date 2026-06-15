@@ -16,7 +16,7 @@ from rest_framework.exceptions import ValidationError
 from django.contrib.auth.models import User
 
 # Create your views here.
-
+"""
 class CreateTestUserView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -46,7 +46,7 @@ class CreateTestUserView(APIView):
             {"message": "user created"},
             status=status.HTTP_201_CREATED
         )
-
+"""
 class PeopleView(APIView):
     #認証クラスの指定
     

@@ -73,7 +73,12 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    os.getenv("FRONTEND_URL", "http://localhost:3000")
+    "http://localhost:3000",
+    "https://shift-phi-beryl.vercel.app",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://shift-phi-beryl.vercel.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

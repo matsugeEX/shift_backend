@@ -13,7 +13,7 @@ urlpatterns = [
     path("logout/",views.LogoutView.as_view()),
     path("person/",views.PeopleView.as_view()),
     path("allocation/",views.AllocationView.as_view()),
-    path("create-test-user/", views.CreateTestUserView.as_view()),
+    #path("create-test-user/", views.CreateTestUserView.as_view()),
 ]
 
 #username yamada

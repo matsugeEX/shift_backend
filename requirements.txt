@@ -6,3 +6,4 @@ mysqlclient
 python-dotenv
 ortools
 gunicorn
+psycopg2-binary
